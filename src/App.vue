@@ -23,23 +23,22 @@
                   placeholder="Например DOGE"
                   v-model="ticker"
                   @keydown.enter="add"
+                  @input="findSuitableTickers"
                 />
               </div>
-              <!-- <div class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
-                <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-                  BTC
-                </span>
-                <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-                  DOGE
-                </span>
-                <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-                  BCH
-                </span>
-                <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-                  CHD
+              <div class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
+                <span 
+                  class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
+                  v-for="(suitableTicker, ndx) in this.suitableTickers"
+                  :key="ndx"
+                  @click="addSuitableTicker(suitableTicker)"
+                >
+                  {{suitableTicker}}
                 </span>
               </div>
-              <div class="text-sm text-red-600">Такой тикер уже добавлен</div> -->
+              <div class="text-sm text-red-600"
+                v-if="isTickerAdded()"
+              >Такой тикер уже добавлен</div>
             </div>
           </div>
           <button
@@ -160,24 +159,31 @@ export default {
       tickers: [ ],
       selected: null,
       graph: [],
+      availableTickers: [],
+      suitableTickers: [],
     }
   },
   methods: {
-    add() {
-      const newTicker = this.ticker;
-      this.tickers.push({
-        name: newTicker, 
-        price: '-'
-      });
+    subscribeToUpdate(tickerName) {
       setInterval(async() => {
-        const responce = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${newTicker}&tsyms=USD&api_key=ee23eeb7d2c03329354035c15ba6d23249b53ba5bb8790a7c8084731ffdab051`);
+        const responce = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=ee23eeb7d2c03329354035c15ba6d23249b53ba5bb8790a7c8084731ffdab051`);
         const data = await responce.json();
-        const currentTicker = this.tickers.find(t => t.name === newTicker);
+        const currentTicker = this.tickers.find(t => t.name === tickerName);
         currentTicker.price = data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
         if (this.selected ? this.selected === currentTicker : false) {
           this.graph.push(currentTicker.price);
         }
       }, 3000);
+    },
+    add() {
+      const newTickerName = this.ticker;
+      this.tickers.push({
+        name: newTickerName, 
+        price: '-'
+      });
+
+      localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers));
+      this.subscribeToUpdate(newTickerName);
 
       this.ticker='';
     },
@@ -191,12 +197,44 @@ export default {
       this.selected = clickedTicker;
       this.graph = [];
     },
+    findSuitableTickers() {
+      this.suitableTickers = [];
+      this.availableTickers.forEach(t => {
+        if (this.suitableTickers.length > 3) return;
+        else if (t.slice(0, this.ticker.length) === this.ticker) {
+          this.suitableTickers.push(t);
+        }
+      })
+    },
+    addSuitableTicker(suitableTicker) {
+      this.ticker = suitableTicker;
+      console.log('this.isTickerAdded() - ',this.isTickerAdded());
+      if (!this.isTickerAdded()) this.add();
+    },
     normalizeGraph() {
       const max = Math.max(...this.graph);
       const min = Math.min(...this.graph);
       return this.graph.map((bar) => 5 + (bar - min)* 95/(max - min));
     },
-  }
+    isTickerAdded() {
+      return this.tickers.find(t => t.name === this.ticker);
+    },
+  },
+
+  created() {
+    const tickersData = localStorage.getItem('cryptonomicon-list');
+    console.log(tickersData);
+    if (tickersData) {
+      this.tickers = JSON.parse(tickersData);
+      this.tickers.forEach(ticker => this.subscribeToUpdate(ticker.name))
+    }
+  },
+
+  async mounted() {
+    const responce = await fetch(`https://min-api.cryptocompare.com/data/blockchain/list?api_key=ee23eeb7d2c03329354035c15ba6d23249b53ba5bb8790a7c8084731ffdab051`);
+    const data = await responce.json();
+    for (let t in data.Data) this.availableTickers.push(t);
+  },
 
 }
 </script>
