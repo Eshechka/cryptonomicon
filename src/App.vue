@@ -83,11 +83,15 @@
           <hr class="w-full border-t border-gray-600 my-4"/>
           <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
             <div
-              class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
+              class="overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
               v-for="t in paginatedTickers"
               :key="t.name"
               @click="selectTicker(t)"
-              :class="selected === t ? 'border-4' : ''"
+              :class="{
+                'border-4' : selected === t,
+                'bg-red-100' : t.price === 'invalid',
+                'bg-white' : t.price !== 'invalid'
+                      }"
             >
               <div class="px-4 py-5 sm:p-6 text-center">
                 <dt class="text-sm font-medium text-gray-500 truncate">
@@ -161,6 +165,8 @@
             </svg>
           </button>
         </section>
+        <pre>{{tickers}}</pre>
+        <!-- <pre>{{lastTickers}}</pre> -->
       </div>
     </div>
   </div>
@@ -245,8 +251,8 @@ export default {
 
   methods: {
     formatTickerPrice(price) {
-      if (price === '-') {
-        return price;
+      if (price === '-' || price === 'invalid') {
+        return '-';
       } 
       return price > 1 
           ? price.toFixed(2) 
@@ -254,26 +260,16 @@ export default {
     },
 
     updateTicker(tickerName, price) {
-      this.tickers.find(t => t.name === tickerName).price = price ? price : '-';
+      const currentTicker = this.tickers.find(t => t.name === tickerName);
+
+      currentTicker.price = price ? price : '-';
       
-    },
-
-    async updateTickers() {
-        if (!this.tickers.length) return;
-
-        // const tickersData = await loadTickers(this.tickers.map(t => t.name));
-
-        this.tickers.forEach(ticker => {
-          // const price = tickersData[ticker.name.toUpperCase()];
-          // ticker.price = price ? price : '-';
-
-          if (this.selected ? this.selected === ticker : false) {
-            if (ticker.price) this.graph.push(ticker.price);
-          }
-        })
+      if (currentTicker === this.selected && +currentTicker.price) this.graph.push(currentTicker.price);
     },
 
     add() {
+      if (!this.ticker) return;
+
       const currentTicker = {
         name: this.ticker, 
         price: '-'
@@ -284,7 +280,6 @@ export default {
       subscribeToTicker(currentTicker.name, (price) => {
         this.updateTicker(currentTicker.name, price);
       });
-      // this.updateTickers();
 
       this.ticker='';
       this.filter='';
@@ -359,7 +354,8 @@ export default {
       }
     },
     tickers() {
-      localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers.map(t => {t.price = `-`; return t})));
+      if (!this.tickers.length)
+        localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers.map(t => {t.price = `-`; return t})));
     },
   }
 
