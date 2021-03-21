@@ -23,13 +23,12 @@
                   placeholder="Например DOGE"
                   v-model="ticker"
                   @keydown.enter="add"
-                  @input="findSuitableTickers"
                 />
               </div>
               <div class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
                 <span 
                   class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
-                  v-for="(suitableTicker, ndx) in this.suitableTickers"
+                  v-for="(suitableTicker, ndx) in suitableTickers"
                   :key="ndx"
                   @click="addSuitableTicker(suitableTicker)"
                 >
@@ -37,7 +36,7 @@
                 </span>
               </div>
               <div class="text-sm text-red-600"
-                v-if="isTickerAdded()"
+                v-if="isTickerAdded"
               >Такой тикер уже добавлен</div>
             </div>
           </div>
@@ -64,11 +63,28 @@
         </section>
 
         <template v-if="tickers.length">
+          <div>
+            <button
+              class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 mr-2"
+              @click="page = page - 1"
+              v-if="page > 1"
+            >Назад</button>
+            <button
+              class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+              @click="page = page + 1"
+              v-if="hasNextPage"
+            >Вперед</button>
+            <div>Фильтр: 
+              <input type="text"
+                v-model="filter"
+              >
+            </div>
+          </div>
           <hr class="w-full border-t border-gray-600 my-4"/>
           <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
             <div
               class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
-              v-for="t in tickers"
+              v-for="t in paginatedTickers"
               :key="t.name"
               @click="selectTicker(t)"
               :class="selected === t ? 'border-4' : ''"
@@ -78,7 +94,7 @@
                   {{t.name}} - USD
                 </dt>
                 <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                  {{t.price}}
+                  {{formatTickerPrice(t.price)}}
                 </dd>
               </div>
               <div class="w-full border-t border-gray-200"></div>
@@ -110,7 +126,7 @@
           </h3>
           <div class="flex items-end border-gray-600 border-b border-l h-64">
             <div
-              v-for="(bar, ndx) in normalizeGraph()"
+              v-for="(bar, ndx) in normalizedGraph"
               :key="ndx"
               :style="{height: `${bar}%`}"
               class="bg-purple-800 border w-10"
@@ -120,6 +136,7 @@
           <button
             type="button"
             class="absolute top-0 right-0"
+            @click="selected = null"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -150,6 +167,8 @@
 </template>
 
 <script>
+import { subscribeToTicker, unsubscribeToTicker } from './api';
+
 
 export default {
   name: 'App',
@@ -160,73 +179,160 @@ export default {
       selected: null,
       graph: [],
       availableTickers: [],
-      suitableTickers: [],
+      page: 1,
+      filter: '',
+      amountLoadTickers: 6,
     }
   },
-  methods: {
-    subscribeToUpdate(tickerName) {
-      setInterval(async() => {
-        const responce = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=ee23eeb7d2c03329354035c15ba6d23249b53ba5bb8790a7c8084731ffdab051`);
-        const data = await responce.json();
-        const currentTicker = this.tickers.find(t => t.name === tickerName);
-        currentTicker.price = data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
-        if (this.selected ? this.selected === currentTicker : false) {
-          this.graph.push(currentTicker.price);
-        }
-      }, 3000);
-    },
-    add() {
-      const newTickerName = this.ticker;
-      this.tickers.push({
-        name: newTickerName, 
-        price: '-'
-      });
 
-      localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers));
-      this.subscribeToUpdate(newTickerName);
+  computed: {
+    hasNextPage(){
+      return this.filteredTickers.length > this.endToLoadTickers;
+    },
+
+    startToLoadTickers() {
+      return this.amountLoadTickers * (this.page - 1);
+    },
+
+    endToLoadTickers() {
+      return this.amountLoadTickers * this.page;
+    },
+
+    filteredTickers() {
+      return this.tickers.filter(ticker => ticker.name.includes(this.filter));
+    },
+
+    paginatedTickers() {
+      return this.filteredTickers.slice(this.startToLoadTickers, this.endToLoadTickers);
+    },
+
+    suitableTickers() {
+      let suitableTickers = [];
+
+      if (this.ticker) {
+        this.availableTickers.forEach(t => {
+          const searchedWord = t.slice(0, this.ticker.length);
+          if (suitableTickers.length > 3) return;
+          else 
+            if (searchedWord === this.ticker) {
+              suitableTickers.push(t);
+            }
+        });
+      }
+      return suitableTickers;
+    },
+
+    isTickerAdded() {
+      return this.tickers.find(t => t.name === this.ticker);
+    },
+
+    normalizedGraph() {
+      const max = Math.max(...this.graph);
+      const min = Math.min(...this.graph);
+      if (min === max) {
+        return this.graph.map(() => 50);
+      }
+      return this.graph.map((bar) => 5 + (bar - min)* 95/(max - min));
+    },
+
+    pageStateOptions() {
+      return {
+        filter: this.filter,
+        page: this.page,
+      }
+    },
+  },
+
+  methods: {
+    formatTickerPrice(price) {
+      if (price === '-') {
+        return price;
+      } 
+      return price > 1 
+          ? price.toFixed(2) 
+          : price.toPrecision(2);
+    },
+
+    updateTicker(tickerName, price) {
+      this.tickers.find(t => t.name === tickerName).price = price ? price : '-';
+      
+    },
+
+    async updateTickers() {
+        if (!this.tickers.length) return;
+
+        // const tickersData = await loadTickers(this.tickers.map(t => t.name));
+
+        this.tickers.forEach(ticker => {
+          // const price = tickersData[ticker.name.toUpperCase()];
+          // ticker.price = price ? price : '-';
+
+          if (this.selected ? this.selected === ticker : false) {
+            if (ticker.price) this.graph.push(ticker.price);
+          }
+        })
+    },
+
+    add() {
+      const currentTicker = {
+        name: this.ticker, 
+        price: '-'
+      };
+
+      this.tickers = [...this.tickers, currentTicker];
+      
+      subscribeToTicker(currentTicker.name, (price) => {
+        this.updateTicker(currentTicker.name, price);
+      });
+      // this.updateTickers();
 
       this.ticker='';
+      this.filter='';
     },
+
     del(tickerToRemove) {
       this.tickers = this.tickers.filter((ticker) => 
         ticker !== tickerToRemove
       );
       if (tickerToRemove === this.selected) this.selected = null;
+      unsubscribeToTicker(tickerToRemove.name);
     },
+
     selectTicker(clickedTicker) {
       this.selected = clickedTicker;
       this.graph = [];
     },
-    findSuitableTickers() {
-      this.suitableTickers = [];
-      this.availableTickers.forEach(t => {
-        if (this.suitableTickers.length > 3) return;
-        else if (t.slice(0, this.ticker.length) === this.ticker) {
-          this.suitableTickers.push(t);
-        }
-      })
-    },
+
     addSuitableTicker(suitableTicker) {
       this.ticker = suitableTicker;
-      console.log('this.isTickerAdded() - ',this.isTickerAdded());
-      if (!this.isTickerAdded()) this.add();
-    },
-    normalizeGraph() {
-      const max = Math.max(...this.graph);
-      const min = Math.min(...this.graph);
-      return this.graph.map((bar) => 5 + (bar - min)* 95/(max - min));
-    },
-    isTickerAdded() {
-      return this.tickers.find(t => t.name === this.ticker);
+      if (!this.isTickerAdded) this.add();
     },
   },
 
   created() {
+    const urlData = Object.fromEntries(new URL(window.location).searchParams.entries());
+
+    if (urlData.filter) {
+      this.filter = urlData.filter;
+    }
+    if (urlData.page) {
+      this.page = urlData.page;
+    }
+
     const tickersData = localStorage.getItem('cryptonomicon-list');
-    console.log(tickersData);
+    
     if (tickersData) {
       this.tickers = JSON.parse(tickersData);
-      this.tickers.forEach(ticker => this.subscribeToUpdate(ticker.name))
+
+      this.tickers.forEach(ticker => {
+        subscribeToTicker(ticker.name, (price) => {
+          this.updateTicker(ticker.name, price);
+        });
+      });
+      // this.updateTickers();
+      // setInterval(this.updateTickers, 5000);
+
+      // this.tickers.forEach(ticker => this.subscribeToUpdate(ticker.name))
     }
   },
 
@@ -235,6 +341,27 @@ export default {
     const data = await responce.json();
     for (let t in data.Data) this.availableTickers.push(t);
   },
+
+  watch: {
+    filter() {
+      this.page = 1;
+    },
+    pageStateOptions(value) {
+      window.history.pushState(
+        null,
+        '',
+        `${window.location.pathname}?filter=${value.filter}&page=${value.page}`
+      );
+    },
+    paginatedTickers() {
+      if (this.paginatedTickers.length === 0 && this.page > 1) {
+        this.page -= 1;
+      }
+    },
+    tickers() {
+      localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers.map(t => {t.price = `-`; return t})));
+    },
+  }
 
 }
 </script>
