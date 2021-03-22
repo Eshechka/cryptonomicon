@@ -165,8 +165,6 @@
             </svg>
           </button>
         </section>
-        <pre>{{tickers}}</pre>
-        <!-- <pre>{{lastTickers}}</pre> -->
       </div>
     </div>
   </div>
@@ -259,7 +257,7 @@ export default {
           : price.toPrecision(2);
     },
 
-    updateTicker(tickerName, price) {
+    updateTicker(tickerName, price) {//!!!!!!!!!!!
       const currentTicker = this.tickers.find(t => t.name === tickerName);
 
       currentTicker.price = price ? price : '-';
@@ -275,7 +273,7 @@ export default {
         price: '-'
       };
 
-      this.tickers = [...this.tickers, currentTicker];
+      this.tickers = [...this.tickers, currentTicker];//!!!!!!!!!
       
       subscribeToTicker(currentTicker.name, (price) => {
         this.updateTicker(currentTicker.name, price);
@@ -324,10 +322,6 @@ export default {
           this.updateTicker(ticker.name, price);
         });
       });
-      // this.updateTickers();
-      // setInterval(this.updateTickers, 5000);
-
-      // this.tickers.forEach(ticker => this.subscribeToUpdate(ticker.name))
     }
   },
 
@@ -354,8 +348,10 @@ export default {
       }
     },
     tickers() {
-      if (!this.tickers.length)
-        localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers.map(t => {t.price = `-`; return t})));
+        localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers.map(t => {
+          t.price = t.price ? t.price : `-`; 
+          return t;
+        })));
     },
   }
 
