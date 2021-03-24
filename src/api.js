@@ -1,10 +1,6 @@
 const API_KEY =
     `ee23eeb7d2c03329354035c15ba6d23249b53ba5bb8790a7c8084731ffdab051`;
 
-// const searchParams = new URLSearchParams();
-// searchParams.set("tsyms", "USD");
-// searchParams.set("api_key", API_KEY);
-
 const tickersHandlers = new Map();
 const socket = new WebSocket(`wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`);
 

@@ -88,7 +88,7 @@
               :key="t.name"
               @click="selectTicker(t)"
               :class="{
-                'border-4' : selected === t,
+                'border-4' : selectedTicker === t,
                 'bg-red-100' : t.price === 'invalid',
                 'bg-white' : t.price !== 'invalid'
                       }"
@@ -124,14 +124,17 @@
           </dl>
           <hr class="w-full border-t border-gray-600 my-4" />
         </template>
-        <section class="relative" v-if="selected">
+        <section class="relative" v-if="selectedTicker">
           <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-            {{selected ? selected.name : ''}} - USD
+            {{selectedTicker ? selectedTicker.name : ''}} - USD
           </h3>
-          <div class="flex items-end border-gray-600 border-b border-l h-64">
+          <div class="flex items-end border-gray-600 border-b border-l h-64"
+            ref="graph"
+          >
             <div
               v-for="(bar, ndx) in normalizedGraph"
               :key="ndx"
+              ref="graphElement"
               :style="{height: `${bar}%`}"
               class="bg-purple-800 border w-10"
             ></div>
@@ -140,7 +143,7 @@
           <button
             type="button"
             class="absolute top-0 right-0"
-            @click="selected = null"
+            @click="selectedTicker = null"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -180,17 +183,19 @@ export default {
     return {
       ticker: '',
       tickers: [ ],
-      selected: null,
+      selectedTicker: null,
       graph: [],
+      barWidth: 40,
       availableTickers: [],
       page: 1,
       filter: '',
       amountLoadTickers: 6,
+      maxGraphElements: 0,
     }
   },
 
   computed: {
-    hasNextPage(){
+    hasNextPage() {
       return this.filteredTickers.length > this.endToLoadTickers;
     },
 
@@ -248,6 +253,23 @@ export default {
   },
 
   methods: {
+    calculateMaxGraphElements() {
+      this.$nextTick().then(() => {
+        console.log(this.$refs.graph);
+        if (this.$refs.graph) {
+          const newMaxGraphElements = Math.floor( this.$refs.graph.clientWidth / this.barWidth );
+          const delta = this.maxGraphElements - newMaxGraphElements;
+
+          if (delta > 0) {
+            this.graph = this.graph.slice(delta);
+          }
+
+          this.maxGraphElements = newMaxGraphElements;
+        }
+      });
+      
+    },
+    
     formatTickerPrice(price) {
       if (price === '-' || price === 'invalid') {
         return '-';
@@ -257,12 +279,17 @@ export default {
           : price.toPrecision(2);
     },
 
-    updateTicker(tickerName, price) {//!!!!!!!!!!!
+    updateTicker(tickerName, price) {
       const currentTicker = this.tickers.find(t => t.name === tickerName);
 
       currentTicker.price = price ? price : '-';
       
-      if (currentTicker === this.selected && +currentTicker.price) this.graph.push(currentTicker.price);
+      if (currentTicker === this.selectedTicker && +currentTicker.price) {
+        this.graph.push(currentTicker.price);
+        if (this.graph.length > this.maxGraphElements) {
+          this.graph.shift();
+        }
+      }
     },
 
     add() {
@@ -287,13 +314,14 @@ export default {
       this.tickers = this.tickers.filter((ticker) => 
         ticker !== tickerToRemove
       );
-      if (tickerToRemove === this.selected) this.selected = null;
+      if (tickerToRemove === this.selectedTicker) this.selectedTicker = null;
       unsubscribeToTicker(tickerToRemove.name);
     },
 
     selectTicker(clickedTicker) {
-      this.selected = clickedTicker;
+      this.selectedTicker = clickedTicker;
       this.graph = [];
+      this.calculateMaxGraphElements();
     },
 
     addSuitableTicker(suitableTicker) {
@@ -329,6 +357,8 @@ export default {
     const responce = await fetch(`https://min-api.cryptocompare.com/data/blockchain/list?api_key=ee23eeb7d2c03329354035c15ba6d23249b53ba5bb8790a7c8084731ffdab051`);
     const data = await responce.json();
     for (let t in data.Data) this.availableTickers.push(t);
+
+    window.addEventListener('resize', this.calculateMaxGraphElements);
   },
 
   watch: {
